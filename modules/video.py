@@ -2,23 +2,19 @@ import os
 import re
 import yt_dlp
 import shutil
-from pyrogram import filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes
+
 from datetime import datetime
 
-
-# -----------------------
-# Video Command Handler
-# -----------------------
-@filters.command("video")
-async def handle_video(client, message):
-    query = " ".join(message.command[1:])
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args)
     if not query:
-        return await message.reply_text(
-            "⚠️ Please provide a video name.\n\nExample: `/video despacito`"
+        return await update.message.reply_text(
+            "⚠️ Please provide a video name.\n\nExample: /video despacito"
         )
 
-    status = await message.reply_text("🔎 Searching for video…")
+    status = await update.message.reply_text("🔎 Searching for video…")
     os.makedirs("downloads", exist_ok=True)
     out_tmpl = os.path.join("downloads", "%(title)s [%(id)s].%(ext)s")
 
@@ -88,16 +84,14 @@ async def handle_video(client, message):
         f"👁 **Views:** {views}\n"
         f"👍 **Likes:** {likes}\n"
         f"💬 **Comments:** {comments}\n\n"
-        f"🙋‍♂️ **Requested by:** {message.from_user.mention}"
+        f"🙋‍♂️ **Requested by:** {update.message.from_user.mention}"
     )
 
     try:
-        await client.send_video(
-            chat_id=message.chat.id,
+        await update.message.reply_video(
             video=file_path,
             caption=caption,
             supports_streaming=True,
-            block=True,
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/deweni2")]]
             )
