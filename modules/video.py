@@ -4,6 +4,7 @@ import yt_dlp
 import shutil
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
+from telegram.helpers import mention_html
 from datetime import datetime
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,20 +80,21 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     comments = safe_int(info.get('comment_count'))
 
     caption = (
-        f"🎥 **Title:** {info.get('title')}\n"
-        f"📺 **Channel:** {info.get('uploader')}\n"
-        f"📅 **Upload Date:** {upload_date}\n"
-        f"⏱ **Duration:** {duration} sec\n"
-        f"👁 **Views:** {views}\n"
-        f"👍 **Likes:** {likes}\n"
-        f"💬 **Comments:** {comments}\n\n"
-        f"🙋‍♂️ **Requested by:** {update.message.from_user.mention}"
+        f"🎥 <b>Title:</b> {info.get('title')}\n"
+        f"📺 <b>Channel:</b> {info.get('uploader')}\n"
+        f"📅 <b>Upload Date:</b> {upload_date}\n"
+        f"⏱ <b>Duration:</b> {duration} sec\n"
+        f"👁 <b>Views:</b> {views}\n"
+        f"👍 <b>Likes:</b> {likes}\n"
+        f"💬 <b>Comments:</b> {comments}\n\n"
+        f"🙋‍♂️ <b>Requested by:</b> {mention_html(update.message.from_user.id, update.message.from_user.first_name)}"
     )
 
     try:
         await update.message.reply_video(
             video=file_path,
             caption=caption,
+            parse_mode="HTML",
             supports_streaming=True,
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/deweni2")]]
