@@ -4,7 +4,6 @@ import yt_dlp
 import shutil
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
-
 from datetime import datetime
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -14,18 +13,19 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ Please provide a video name.\n\nExample: /video despacito"
         )
 
+    # Send initial status message
     status = await update.message.reply_text("🔎 Searching for video…")
     os.makedirs("downloads", exist_ok=True)
     out_tmpl = os.path.join("downloads", "%(title)s [%(id)s].%(ext)s")
 
-    # check ffmpeg
+    # Check FFmpeg
     if not shutil.which("ffmpeg"):
-        return await status.edit("❌ FFmpeg is not installed. Please install it!")
+        return await status.edit_text("❌ FFmpeg is not installed. Please install it!")
 
     cookie_file = "cookies.txt" if os.path.exists("cookies.txt") else None
 
     ydl_opts = {
-        "format": "bv*[filesize<2G]+ba/b[filesize<2G]",
+        "format": "bv*+ba/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "outtmpl": out_tmpl,
@@ -33,7 +33,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "geo_bypass": True,
         "nocheckcertificate": True,
         "default_search": "ytsearch",
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "extractor_args": {"youtube": {"player_client": ["web"]}},  # only web client
     }
 
     if cookie_file:
@@ -50,15 +50,17 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 info = info["entries"][0]
 
             file_path = ydl.prepare_filename(info)
+
+            # fix webm → mp4
             if not file_path.endswith(".mp4") and os.path.exists(file_path.replace(".webm", ".mp4")):
                 file_path = file_path.replace(".webm", ".mp4")
 
             if not os.path.exists(file_path):
-                return await status.edit("❌ File not found after download.")
+                return await status.edit_text("❌ File not found after download.")
     except Exception as e:
-        return await status.edit(f"❌ Failed: `{e}`")
+        return await status.edit_text(f"❌ Failed: `{e}`")
 
-    # format metadata
+    # --- Metadata ---
     upload_date_raw = info.get('upload_date')
     try:
         upload_date = datetime.strptime(str(upload_date_raw), "%Y%m%d").strftime("%Y/%m/%d")
@@ -97,7 +99,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
     except Exception as e:
-        return await status.edit(f"⚠️ Error while sending video: `{e}`")
+        await status.edit_text(f"⚠️ Error while sending video: `{e}`")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
