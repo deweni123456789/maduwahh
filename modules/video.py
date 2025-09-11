@@ -5,7 +5,6 @@ import logging
 from datetime import datetime
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
-import config  # make sure you have config.py with DEVELOPER = "@yourusername"
 
 
 def sanitize_filename(name: str) -> str:
