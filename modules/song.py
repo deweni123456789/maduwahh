@@ -18,7 +18,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = " ".join(context.args)
 
-    # URL check / fallback to search
+    # URL or search
     if query.startswith("http://") or query.startswith("https://"):
         url = query
     else:
@@ -39,24 +39,27 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # cookies.txt check
     cookie_path = "modules/cookies.txt"
     if not os.path.exists(cookie_path):
-        cookie_path = None  # optional fallback
+        cookie_path = None
 
+    # yt-dlp options
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'postprocessors': [
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }
+        ],
+        'postprocessor_args': ['-ar', '44100'],  # fix conversion issue
+        'prefer_ffmpeg': True,
         'quiet': True,
         'nocheckcertificate': True,
         'noplaylist': True,
         'geo_bypass': True,
         'extractor_args': {
-            'youtube': {
-                'player_client': ['ios', 'android', 'tv', 'web_creator']
-            }
+            'youtube': {'player_client': ['ios', 'android', 'tv', 'web_creator']}
         }
     }
 
@@ -71,10 +74,18 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 info = ydl.extract_info(url, download=True)
                 if not info:
                     return None, None
+
+                # get filename
                 base = ydl.prepare_filename(info)
                 mp3_file = os.path.splitext(base)[0] + ".mp3"
-                if not os.path.exists(mp3_file) and os.path.exists(base):
-                    os.rename(base, mp3_file)
+
+                # fallback: search in downloads folder
+                if not os.path.exists(mp3_file):
+                    for f in os.listdir("downloads"):
+                        if f.lower().endswith(".mp3"):
+                            mp3_file = os.path.join("downloads", f)
+                            break
+
                 if not os.path.exists(mp3_file):
                     return None, None
                 return info, mp3_file
@@ -106,11 +117,16 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/deweni2")]
     ])
 
-    await update.message.reply_audio(
-        audio=open(file_path, "rb"),
-        caption=caption,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
-    os.remove(file_path)
+    try:
+        await update.message.reply_audio(
+            audio=open(file_path, "rb"),
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Upload failed: {e}")
+        return
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
