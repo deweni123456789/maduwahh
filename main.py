@@ -7,7 +7,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 )
 
-from modules.song import register
+from modules.song import register as song_register
 from modules.video import handle_video
 from modules.pexels import wallpaper
 from modules.socials import handle_fb, handle_tiktok, handle_insta
@@ -149,8 +149,8 @@ def main():
     # Commands
     # -----------------------
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("song", register))
-    app.add_handler(CommandHandler("video", handle_video))
+    app.add_handler(CommandHandler("song", song_register))  # song register
+    app.add_handler(CommandHandler("video", handle_video))  # video handler
     app.add_handler(CommandHandler("fb", handle_fb))
     app.add_handler(CommandHandler("tiktok", handle_tiktok))
     app.add_handler(CommandHandler("insta", handle_insta))
