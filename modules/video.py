@@ -27,7 +27,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cookie_file = "cookies.txt" if os.path.exists("cookies.txt") else None
 
     ydl_opts = {
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "format": "bv*+ba/b",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "outtmpl": out_tmpl,
@@ -35,17 +35,31 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "geo_bypass": True,
         "nocheckcertificate": True,
         "default_search": "ytsearch",
+        "extractor_args": {"youtube": {"player_skip": ["configs", "webpage"]}},
     }
     if cookie_file:
         ydl_opts["cookiefile"] = cookie_file
 
+    info = None
+    file_path = None
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=True)
+            try:
+                # 🔹 First attempt: direct query
+                info = ydl.extract_info(query, download=True)
+            except Exception as e:
+                if "not available on this app" in str(e).lower():
+                    logging.warning("Retrying with ytsearch1 because of app restriction…")
+                    info = ydl.extract_info(f"ytsearch1:{query}", download=True)
+                else:
+                    raise
+
             if "entries" in info:
                 info = info["entries"][0]
 
             file_path = ydl.prepare_filename(info)
+
             if not file_path.endswith(".mp4") and os.path.exists(file_path.replace(".webm", ".mp4")):
                 file_path = file_path.replace(".webm", ".mp4")
 
@@ -57,6 +71,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status.edit_text(f"❌ Failed: `{e}`")
         return
 
+    # --- Metadata formatting ---
     upload_date_raw = info.get("upload_date")
     try:
         upload_date = datetime.strptime(str(upload_date_raw), "%Y%m%d").strftime("%Y/%m/%d")
@@ -102,7 +117,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Send video error: {e}")
         await update.message.reply_text("⚠️ Error while sending video.")
     finally:
-        if os.path.exists(file_path):
+        if file_path and os.path.exists(file_path):
             os.remove(file_path)
 
     await status.delete()
