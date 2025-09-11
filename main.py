@@ -18,7 +18,7 @@ from modules import broadcast
 from modules.lyrics import add_lyrics_handler  # ✅ Lyrics module import
 from modules.find import find_music  # Song finder
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7896090354:AAFPlTN5x413nHnmaIRT4WS68fYiG31kR6Q")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7896090354:AAFjZ2u_oXcubJAdDeY0Vp_7yKrO4Ywj_J8")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "veZI7AhoLrQwUFCMk6aHiJjznoi3Q1bu0d6L5cpFQMTkZNYJXQqtDTnZ")
 
 logging.basicConfig(
