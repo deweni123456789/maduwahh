@@ -7,7 +7,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 )
 
-from modules.song import register as song_register
+from modules.song import song_register
 from modules.video import handle_video
 from modules.pexels import wallpaper
 from modules.socials import handle_fb, handle_tiktok, handle_insta
