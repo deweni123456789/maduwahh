@@ -1,89 +1,139 @@
 import os
-import asyncio
 import yt_dlp
-from datetime import datetime
-from telegram import Update
+import asyncio
+import shutil
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-# -----------------------
-# /song Command Handler
-# -----------------------
+MAIN_LOOP = None
+
+def set_main_loop(loop):
+    global MAIN_LOOP
+    MAIN_LOOP = loop
+
 async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("🎵 Please provide a song name.\nExample: `/song sanam re`", parse_mode="Markdown")
+        await update.message.reply_text("Usage: /song <YouTube URL or keywords>")
         return
 
     query = " ".join(context.args)
-    user = update.effective_user
-    msg = await update.message.reply_text(f"🔎 Searching for: <b>{query}</b> ...", parse_mode="HTML")
+
+    # URL or search
+    if query.startswith("http://") or query.startswith("https://"):
+        url = query
+    else:
+        url = f"ytsearch1:{query}"
+
+    status = await update.message.reply_text("🎵 Downloading audio, please wait...")
+
+    os.makedirs("downloads", exist_ok=True)
+
+    # FFmpeg check
+    if not shutil.which("ffmpeg"):
+        await status.edit_text(
+            "❌ FFmpeg is not installed or not in PATH.\n"
+            "➡️ Please install FFmpeg from https://ffmpeg.org/download.html"
+        )
+        return
+
+    # cookies.txt check
+    cookie_path = "modules/cookies.txt"
+    if not os.path.exists(cookie_path):
+        cookie_path = None
 
     ydl_opts = {
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "quiet": True,
-        "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-        "outtmpl": "%(id)s.%(ext)s"
+        'format': 'bestaudio/best',
+        'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'quiet': True,
+        'nocheckcertificate': True,
+        'noplaylist': True,
+        'geo_bypass': True,
+        'extractor_args': {
+            'youtube': {'player_client': ['ios', 'android', 'tv', 'web_creator']}
+        }
     }
 
-    loop = asyncio.get_running_loop()
+    if cookie_path:
+        ydl_opts['cookiefile'] = cookie_path
 
-    try:
-        def download():
+    loop = MAIN_LOOP or asyncio.get_event_loop()
+
+    def download_audio():
+        try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(f"ytsearch1:{query}", download=True)
+                info = ydl.extract_info(url, download=True)
+                if not info:
+                    return None, None
+                base = ydl.prepare_filename(info)
+                mp3_file = os.path.splitext(base)[0] + ".mp3"
+                if not os.path.exists(mp3_file) and os.path.exists(base):
+                    os.rename(base, mp3_file)
+                if not os.path.exists(mp3_file):
+                    return None, None
+                return info, mp3_file
+        except Exception as e:
+            print(f"Download Error: {e}")
+            return None, None
 
-        info = await loop.run_in_executor(None, download)
+    info, file_path = await loop.run_in_executor(None, download_audio)
 
-        if "entries" in info:
-            info = info["entries"][0]
-
-        file_id = f"{info['id']}.mp3"
-        title = info.get("title", "Unknown Title")
-        channel = info.get("channel", "Unknown Channel")
-        upload_date = info.get("upload_date", "")
-        views = info.get("view_count", 0)
-        likes = info.get("like_count", 0)
-        dislikes = info.get("dislike_count", 0)
-        comments = info.get("comment_count", 0)
-        categories = ", ".join(info.get("categories", []))
-        url = info.get("webpage_url", "N/A")
-        duration = str(datetime.utcfromtimestamp(info["duration"]).strftime("%H:%M:%S")) if "duration" in info else "N/A"
-
-        upload_dt = ""
-        if upload_date:
-            dt = datetime.strptime(upload_date, "%Y%m%d")
-            upload_dt = dt.strftime("%Y/%m/%d")
-
-        caption = (
-            f"🎶 <b>{title}</b>\n"
-            f"👤 Channel: <b>{channel}</b>\n"
-            f"📅 Uploaded: <b>{upload_dt}</b>\n"
-            f"⏱️ Length: <b>{duration}</b>\n"
-            f"👀 Views: <b>{views:,}</b>\n"
-            f"👍 Likes: <b>{likes:,}</b> | 👎 Dislikes: <b>{dislikes:,}</b>\n"
-            f"💬 Comments: <b>{comments:,}</b>\n"
-            f"📂 Category: <b>{categories}</b>\n"
-            f"🔗 <a href='{url}'>Watch on YouTube</a>\n\n"
-            f"📌 Requested by {user.mention_html()}"
+    if not info or not file_path or not os.path.exists(file_path):
+        await status.edit_text(
+            "❌ Failed: Audio file could not be created.\n"
+            "➡️ Make sure FFmpeg is installed and cookies.txt exists if needed."
         )
+        return
 
-        await msg.delete()
-        await update.message.reply_audio(
-            audio=open(file_id, "rb"),
-            title=title,
-            performer=channel,
-            caption=caption,
-            parse_mode="HTML"
-        )
+    # Extract metadata
+    title = info.get("title", "Unknown Title")
+    uploader = info.get("uploader", "Unknown Channel")
+    views = info.get("view_count", 0)
+    likes = info.get("like_count", "N/A")
+    dislikes = info.get("dislike_count", "N/A")  # Some videos may not have this
+    comments = info.get("comment_count", "N/A")
+    duration = info.get("duration", 0)
+    upload_date = info.get("upload_date", "")
+    upload_date_fmt = (
+        f"{upload_date[0:4]}/{upload_date[4:6]}/{upload_date[6:8]}"
+        if upload_date else "Unknown"
+    )
+    duration_fmt = f"{duration//60}:{duration%60:02d}" if duration else "N/A"
+    video_url = info.get("webpage_url", url)
+    filesize = os.path.getsize(file_path) / (1024 * 1024)
+    bot_name = context.bot.first_name
 
-        os.remove(file_id)
+    # Build caption
+    caption = (
+        f"🎵 <b>{title}</b>\n"
+        f"👤 {uploader}\n"
+        f"📅 {upload_date_fmt}\n"
+        f"⏰ {duration_fmt}\n"
+        f"👁 {views:,} views\n"
+        f"👍 {likes}   👎 {dislikes}\n"
+        f"💬 {comments} comments\n"
+        f"📦 {filesize:.2f} MB\n"
+        f"🔗 <a href='{video_url}'>Video Link</a>\n\n"
+        f"🙋 Requested by: {update.effective_user.mention_html()}\n"
+        f"🤖 Uploaded by {bot_name}"
+    )
 
-    except Exception as e:
-        await msg.edit_text(f"❌ Failed: Audio file could not be created.\n\n<b>Error:</b> {e}", parse_mode="HTML")
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/deweni2")],
+        [InlineKeyboardButton("📢 Support Group", url="https://t.me/slmusicmania")],
+        [InlineKeyboardButton("💌 Contact Bot", url=f"https://t.me/{context.bot.username}")]
+    ])
+
+    await status.delete()
+    await update.message.reply_audio(
+        audio=open(file_path, "rb"),
+        caption=caption,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+    os.remove(file_path)
