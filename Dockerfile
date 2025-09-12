@@ -13,9 +13,10 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
-# Install Python dependencies
+# Install Python dependencies + always update yt-dlp
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade yt-dlp
 
 # Run bot
 CMD ["python", "main.py"]
