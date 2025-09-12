@@ -1,6 +1,7 @@
 import os
 import yt_dlp
 import asyncio
+from datetime import datetime, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import shutil
@@ -13,7 +14,9 @@ def set_main_loop(loop):
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /song <YouTube URL or keywords>")
+        msg = await update.message.reply_text("Usage: /song <YouTube URL or keywords>")
+        await asyncio.sleep(10)
+        await msg.delete()
         return
 
     query = " ".join(context.args)
@@ -24,16 +27,18 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         url = f"ytsearch1:{query}"
 
-    await update.message.reply_text("🎵 Downloading audio, please wait...")
+    status_msg = await update.message.reply_text("🎵 Downloading audio, please wait...")
 
     os.makedirs("downloads", exist_ok=True)
 
     # FFmpeg check
     if not shutil.which("ffmpeg"):
-        await update.message.reply_text(
+        await status_msg.edit_text(
             "❌ FFmpeg is not installed or not in PATH.\n"
             "➡️ Please install FFmpeg from https://ffmpeg.org/download.html"
         )
+        await asyncio.sleep(10)
+        await status_msg.delete()
         return
 
     # cookies.txt check
@@ -52,7 +57,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'preferredquality': '192',
             }
         ],
-        'postprocessor_args': ['-ar', '44100'],  # fix conversion issue
+        'postprocessor_args': ['-ar', '44100'],
         'prefer_ffmpeg': True,
         'quiet': True,
         'nocheckcertificate': True,
@@ -74,18 +79,13 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 info = ydl.extract_info(url, download=True)
                 if not info:
                     return None, None
-
-                # get filename
                 base = ydl.prepare_filename(info)
                 mp3_file = os.path.splitext(base)[0] + ".mp3"
-
-                # fallback: search in downloads folder
                 if not os.path.exists(mp3_file):
                     for f in os.listdir("downloads"):
                         if f.lower().endswith(".mp3"):
                             mp3_file = os.path.join("downloads", f)
                             break
-
                 if not os.path.exists(mp3_file):
                     return None, None
                 return info, mp3_file
@@ -96,21 +96,59 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info, file_path = await loop.run_in_executor(None, download_audio)
 
     if not info or not file_path or not os.path.exists(file_path):
-        await update.message.reply_text(
+        await status_msg.edit_text(
             "❌ Failed: Audio file could not be created.\n"
             "➡️ Make sure FFmpeg is installed and cookies.txt exists if needed."
         )
+        await asyncio.sleep(10)
+        await status_msg.delete()
         return
 
+    # Extract metadata
     title = info.get("title", "Unknown Title")
     uploader = info.get("uploader", "Unknown Channel")
     views = info.get("view_count", 0)
+    likes = info.get("like_count", "N/A")
+    dislikes = info.get("dislike_count", "N/A")
+    comments = info.get("comment_count", "N/A")
+    duration = info.get("duration", 0)  # seconds
+    upload_date = info.get("upload_date")  # format YYYYMMDD
+    video_id = info.get("id")
+    video_url = f"https://youtu.be/{video_id}" if video_id else "N/A"
+    category = info.get("categories", ["N/A"])[0]
+
+    # Format duration mm:ss
+    if duration:
+        mins, secs = divmod(duration, 60)
+        hours, mins = divmod(mins, 60)
+        length_str = f"{hours:02d}:{mins:02d}:{secs:02d}" if hours else f"{mins:02d}:{secs:02d}"
+    else:
+        length_str = "N/A"
+
+    # Format upload date
+    if upload_date:
+        try:
+            dt = datetime.strptime(upload_date, "%Y%m%d").replace(tzinfo=timezone.utc)
+            date_str = dt.strftime("%Y/%m/%d")
+            time_str = dt.strftime("%H:%M:%S")
+        except Exception:
+            date_str, time_str = "N/A", "N/A"
+    else:
+        date_str, time_str = "N/A", "N/A"
 
     caption = (
         f"🎵 <b>{title}</b>\n"
-        f"👤 {uploader}\n"
-        f"👁️ {views} views\n\n"
-        f"Requested by: {update.effective_user.mention_html()}"
+        f"👤 Channel: {uploader}\n"
+        f"📺 <a href='{video_url}'>Watch on YouTube</a>\n"
+        f"📂 Category: {category}\n"
+        f"📅 Uploaded: {date_str}\n"
+        f"⏰ Time: {time_str} UTC\n"
+        f"⏳ Length: {length_str}\n"
+        f"👁️ Views: {views:,}\n"
+        f"👍 Likes: {likes}\n"
+        f"👎 Dislikes: {dislikes}\n"
+        f"💬 Comments: {comments}\n\n"
+        f"🙋 Requested by: {update.effective_user.mention_html()}"
     )
 
     keyboard = InlineKeyboardMarkup([
@@ -125,8 +163,13 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Upload failed: {e}")
+        await status_msg.edit_text(f"⚠️ Upload failed: {e}")
+        await asyncio.sleep(10)
+        await status_msg.delete()
         return
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
+
+    # delete service "downloading..." message
+    await status_msg.delete()
