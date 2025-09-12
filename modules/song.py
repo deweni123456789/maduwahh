@@ -35,7 +35,6 @@ class YTDLLogger:
 # Main handler
 # -----------------------
 async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Command: /song <query or url>"""
     if not context.args:
         await update.message.reply_text("Usage: /song <YouTube URL or keywords>")
         return
@@ -51,15 +50,13 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ffmpeg check
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path:
-        await status_msg.edit_text(
-            "❌ FFmpeg not found. Install ffmpeg and make sure it's in PATH."
-        )
+        await status_msg.edit_text("❌ FFmpeg not found. Install ffmpeg and make sure it's in PATH.")
         await asyncio.sleep(6)
         try: await status_msg.delete()
         except: pass
         return
 
-    # cookies: optional
+    # cookies support
     cookie_path: Optional[str] = None
     if os.path.exists("modules/cookies.txt"):
         cookie_path = "modules/cookies.txt"
@@ -68,6 +65,7 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ylog = YTDLLogger()
 
+    # yt-dlp options with SABR bypass and cookie support
     ydl_opts = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": os.path.join("downloads", "%(title)s-%(id)s.%(ext)s"),
@@ -82,7 +80,8 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "preferredquality": "192",
         }],
         "postprocessor_args": ["-ar", "44100"],
-        "extractor_args": {"youtube": {"player_client": ["web"]}},
+        "extractor_args": {"youtube": {"player_client": ["web"], "legacy_premium": False}},
+        "youtube_skip_dash_manifest": True,  # prevent SABR 403
         "logger": ylog,
     }
     if cookie_path:
@@ -96,21 +95,17 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(request_url, download=True)
-                if not info:
-                    return None, None, ylog.tail()
+                if not info: return None, None, ylog.tail()
                 if isinstance(info, dict) and info.get("entries"):
                     entries = info.get("entries")
-                    if entries:
-                        info = entries[0]
+                    if entries: info = entries[0]
                 base = ydl.prepare_filename(info)
                 mp3_path = os.path.splitext(base)[0] + ".mp3"
-                if os.path.exists(mp3_path):
-                    return info, mp3_path, ylog.tail()
+                if os.path.exists(mp3_path): return info, mp3_path, ylog.tail()
                 # fallback conversion
                 possible_exts = [os.path.splitext(base)[1], ".m4a", ".webm", ".opus", ".mp4", ".mkv", ".flv", ".aac", ".wav", ".oga"]
                 found_source = next((os.path.splitext(base)[0]+ext for ext in possible_exts if os.path.exists(os.path.splitext(base)[0]+ext)), None)
-                if not found_source:
-                    return info, None, ylog.tail()
+                if not found_source: return info, None, ylog.tail()
                 cmd = [ffmpeg_path, "-y", "-i", found_source, "-vn", "-ab", "192k", "-ar", "44100", mp3_path]
                 proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if proc.returncode != 0:
@@ -118,8 +113,7 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return info, None, ylog.tail() + "\nFFMPEG STDERR:\n" + proc.stderr
                 try: os.remove(found_source)
                 except: pass
-                if os.path.exists(mp3_path):
-                    return info, mp3_path, ylog.tail()
+                if os.path.exists(mp3_path): return info, mp3_path, ylog.tail()
                 return info, None, ylog.tail()
         except Exception as e:
             ylog.error(f"yt-dlp exception: {e}")
@@ -203,7 +197,7 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await status_msg.delete()
         except: pass
 
-        # --- fast streaming upload using InputFile ---
+        # fast streaming upload
         audio_file = InputFile(mp3_file)
         await update.message.reply_audio(
             audio=audio_file,
@@ -215,7 +209,6 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        # cleanup
         try:
             if mp3_file and os.path.exists(mp3_file):
                 os.remove(mp3_file)
