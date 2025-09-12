@@ -20,12 +20,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     query = " ".join(context.args)
-
-    # URL check / fallback to search
-    if query.startswith("http://") or query.startswith("https://"):
-        url = query
-    else:
-        url = f"ytsearch1:{query}"
+    url = query if query.startswith(("http://", "https://")) else f"ytsearch1:{query}"
 
     status_msg = await update.message.reply_text("🎵 Downloading audio, please wait...")
 
@@ -46,6 +41,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not os.path.exists(cookie_path):
         cookie_path = None
 
+    # yt-dlp options
     ydl_opts = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": "downloads/%(title)s.%(ext)s",
@@ -54,15 +50,16 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }],
-        "quiet": False,
         "noplaylist": True,
         "geo_bypass": True,
         "nocheckcertificate": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web"]  # force only web client
+                "player_client": ["web"]  # force safe client only
             }
-        }
+        },
+        # Optional proxy (uncomment if region blocked)
+        # "proxy": "socks5://127.0.0.1:1080",
     }
 
     if cookie_path:
