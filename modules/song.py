@@ -259,9 +259,9 @@ async def song_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/deweni2"),
-            [InlineKeyboardButton("💌 Contact Bot", url=f"https://t.me/{context.bot.username}")]
-        ])
+    [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/deweni2")],
+    [InlineKeyboardButton("💌 Contact Bot", url=f"https://t.me/{context.bot.username}")]
+])
 
         # delete the status message and (optionally) user's command
         try:
